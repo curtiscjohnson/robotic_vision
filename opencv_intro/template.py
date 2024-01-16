@@ -210,16 +210,6 @@ class App(Frame):
                     hThreshold = Slider2.get()
                     grey = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
                     blurred = cv.GaussianBlur(grey, (15, 15), 0)
-                    # kernel = np.ones((5,5),np.uint8)
-                    # dilated_grey = cv.dilate(blurred,kernel,iterations = 1)
-                    # eroded_grey = cv.erode(dilated_grey,kernel,iterations = 1)
-
-                    # #blur to eliminate noise
-                    # ret, lower = cv.threshold(eroded_grey, lThreshold, 255,
-                    #                           cv.THRESH_BINARY)
-                    # ret, upper = cv.threshold(eroded_grey, hThreshold, 255,
-                    #                           cv.THRESH_BINARY_INV)
-                    # binary = cv.bitwise_and(lower, upper)
                     edges = cv.Canny(blurred, 0* 5, 9 * 5)
 
                     # maybe some dilation and erosion
