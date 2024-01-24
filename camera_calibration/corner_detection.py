@@ -75,8 +75,13 @@ focal_length_mm_x = mtx[0, 0] / sx
 sy = 1 / 7.4e-3
 focal_length_mm_y = mtx[1, 1] / sy
 
-#? why aren't these equal?
 print(f"Focal length in x direction: {focal_length_mm_x} mm")
 print(f"Focal length in y direction: {focal_length_mm_y} mm")
 
-#?why don't the 7.4um and the sensor size divisible?
+#save camera matrix and distortion coefficients to yaml file
+import yaml
+data = {'camera_matrix': mtx.tolist(), 'dist_coeff': dist.tolist()}
+with open("calibration.yaml", "w") as f:
+    yaml.dump(data, f)
+
+
