@@ -55,9 +55,9 @@ for file in calibration_files:
         cv.drawChessboardCorners(img, (10, 7), refined_corners, ret)
         cv.imshow('img', img)
 
-        # k = cv.waitKey(0)
-        # if k == ord('q'):
-        # break
+        k = cv.waitKey(0)
+        if k == ord('q'):
+            break
     else:
         print(f"Could not find initial_corners in {file}.")
 

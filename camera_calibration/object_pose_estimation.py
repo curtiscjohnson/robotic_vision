@@ -29,6 +29,7 @@ rotM, _ = cv.Rodrigues(rvec)
 
 #? what is the translation relative to? The origin of the camera dictated by how we defined the inch_points?
 if retval:
+    print(f"rotVec:\n{rvec}")
     print(f"rotM:\n{rotM}")
     print(f"tvec:\n{tvec}")
 else:
