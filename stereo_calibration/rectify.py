@@ -64,14 +64,17 @@ undistorted_left = cv.remap(left_img, left_mapx, left_mapy, cv.INTER_LINEAR)
 undistorted_right = cv.remap(right_img, right_mapx, right_mapy,
                              cv.INTER_LINEAR)
 
-#draw 3 random horizontal lines at y = 163, 233, 119
-cv.line(undistorted_left, (0, 163), (left_img.shape[1], 163), (0, 255, 0), 2)
-cv.line(undistorted_left, (0, 233), (left_img.shape[1], 233), (0, 255, 0), 2)
-cv.line(undistorted_left, (0, 119), (left_img.shape[1], 119), (0, 255, 0), 2)
+abs_diff_left = cv.absdiff(left_img, undistorted_left)
+abs_diff_right = cv.absdiff(right_img, undistorted_right)
 
-cv.line(undistorted_right, (0, 163), (right_img.shape[1], 163), (0, 255, 0), 2)
-cv.line(undistorted_right, (0, 233), (right_img.shape[1], 233), (0, 255, 0), 2)
-cv.line(undistorted_right, (0, 119), (right_img.shape[1], 119), (0, 255, 0), 2)
+#draw 3 random horizontal lines at y = 163, 233, 119
+cv.line(undistorted_left, (0, 100), (left_img.shape[1], 100), (0, 255, 0), 2)
+cv.line(undistorted_left, (0, 200), (left_img.shape[1], 200), (0, 255, 0), 2)
+cv.line(undistorted_left, (0, 300), (left_img.shape[1], 300), (0, 255, 0), 2)
+
+cv.line(undistorted_right, (0, 100), (right_img.shape[1], 100), (0, 255, 0), 2)
+cv.line(undistorted_right, (0, 200), (right_img.shape[1], 200), (0, 255, 0), 2)
+cv.line(undistorted_right, (0, 300), (right_img.shape[1], 300), (0, 255, 0), 2)
 
 #display undistorted images
 cv.imshow('left', left_img)
@@ -80,8 +83,17 @@ cv.imshow('right', right_img)
 cv.imshow('undistorted left', undistorted_left)
 cv.imshow('undistorted right', undistorted_right)
 
-cv.imshow('abs_diff_left', cv.absdiff(left_img, undistorted_left))
-cv.imshow('abs_diff_right', cv.absdiff(right_img, undistorted_right))
+cv.imshow('abs_diff_left', abs_diff_left)
+cv.imshow('abs_diff_right', abs_diff_right)
 
 cv.waitKey(0)
 cv.destroyAllWindows()
+
+cv.imwrite('original_left.png', left_img)
+cv.imwrite('original_right.png', right_img)
+
+cv.imwrite('rectified_left.png', undistorted_left)
+cv.imwrite('rectified_right.png', undistorted_right)
+
+cv.imwrite('abs_diff_left.png', abs_diff_left)
+cv.imwrite('abs_diff_right.png', abs_diff_right)

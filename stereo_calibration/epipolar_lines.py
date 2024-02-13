@@ -108,3 +108,6 @@ cv.imshow('right', right_img)
 
 cv.waitKey(0)
 cv.destroyAllWindows()
+
+cv.imwrite('left_epilines.png', left_img)
+cv.imwrite('right_epilines.png', right_img)

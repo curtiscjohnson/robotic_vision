@@ -1,4 +1,5 @@
 import glob
+from re import L
 import cv2 as cv
 import yaml
 import numpy as np
@@ -32,7 +33,7 @@ def getChessboardImgPoints(calibration_files):
             # Set the needed parameters to find the refined corners
             winSize = (11, 11)
             zeroZone = (-1, -1)
-            criteria = (cv.TERM_CRITERIA_EPS + cv.TermCriteria_COUNT, 30,
+            criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30,
                         0.001)
 
             refined_corners = cv.cornerSubPix(gray, initial_corners, winSize,
@@ -54,12 +55,25 @@ def getChessboardImgPoints(calibration_files):
     return np.array(img_points)
 
 
-#load left and right camera calibration coeffs from yam
+#load left and right camera calibration coeffs from yaml
 with open('left_calibration.yaml', 'r') as file:
     left_camera_calibration = yaml.load(file, Loader=yaml.FullLoader)
 
 with open('right_calibration.yaml', 'r') as file:
     right_camera_calibration = yaml.load(file, Loader=yaml.FullLoader)
+
+left_calibration_files = sorted(glob.glob('data/20240207145416/L/*.png'))
+right_calibration_files = sorted(glob.glob('data/20240207145416/R/*.png'))
+
+# #load left and right camera calibration coeffs from yaml FOR PRACTICE IMAGES
+# with open('left_practice_calibration.yaml', 'r') as file:
+#     left_camera_calibration = yaml.load(file, Loader=yaml.FullLoader)
+
+# with open('right_practice_calibration.yaml', 'r') as file:
+#     right_camera_calibration = yaml.load(file, Loader=yaml.FullLoader)
+
+# left_calibration_files = sorted(glob.glob('./Practice/SL/*.bmp'))
+# right_calibration_files = sorted(glob.glob('./Practice/SR/*.bmp'))
 
 cameraMatrix1 = left_camera_calibration['camera_matrix']
 distCoeffs1 = left_camera_calibration['dist_coeff']
@@ -72,8 +86,6 @@ distCoeffs1 = np.array(distCoeffs1)
 cameraMatrix2 = np.array(cameraMatrix2)
 distCoeffs2 = np.array(distCoeffs2)
 
-left_calibration_files = glob.glob('data/20240207145416/L/*.png')
-right_calibration_files = glob.glob('data/20240207145416/R/*.png')
 imageSize = cv.imread(left_calibration_files[0]).shape[:2][::-1]
 objectPoints = getChesboardObjPoints(chessboard_size=(10, 7),
                                      numImages=len(left_calibration_files),
@@ -82,9 +94,9 @@ objectPoints = getChesboardObjPoints(chessboard_size=(10, 7),
 imagePoints1 = getChessboardImgPoints(left_calibration_files)
 imagePoints2 = getChessboardImgPoints(right_calibration_files)
 
-np.save('objectPoints.npy', objectPoints)
-np.save('imagePoints1.npy', imagePoints1)
-np.save('imagePoints2.npy', imagePoints2)
+# np.save('objectPoints.npy', objectPoints)
+# np.save('imagePoints1.npy', imagePoints1)
+# np.save('imagePoints2.npy', imagePoints2)
 
 retval, _, _, _, _, R, T, E, F = cv.stereoCalibrate(
     objectPoints,
@@ -95,6 +107,7 @@ retval, _, _, _, _, R, T, E, F = cv.stereoCalibrate(
     cameraMatrix2,
     distCoeffs2,
     imageSize,
+    criteria=(cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001),
     flags=cv.CALIB_FIX_INTRINSIC)
 
 np.set_printoptions(suppress=True, precision=4)
