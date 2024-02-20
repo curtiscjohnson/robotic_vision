@@ -131,3 +131,4 @@ print(
 #actual distance between the 4 outermost corner points
 actual_distance = np.linalg.norm(points3d1[0, :] - points3d1[1, :])
 print(f"Actual distance between 2 corner points: {actual_distance}")
+print(f"Should be {3.88*9}")
