@@ -27,18 +27,17 @@ class BaseballDetector:
 
         self.blob_detector = cv.SimpleBlobDetector_create(params)
 
-    def _get_place_to_look_for_ball(self, img):
-        #remove background
-        diff = cv.absdiff(img, self.background)
+    def _get_ROI(self, img):
+        # img comes in with background removed
 
         #  gaussian blur diff image
-        blur = cv.medianBlur(diff, 5)
+        blur = cv.medianBlur(img, 5)
 
         #use time history to only look in region of interest so that thresholds can be low.
         time_diff = cv.absdiff(blur, self.prev_image)
 
         #threshold blur on about gresyscale of 5ish
-        ret, thresh = cv.threshold(blur, 7, 255, cv.THRESH_BINARY)
+        ret, thresh = cv.threshold(time_diff, 15, 255, cv.THRESH_BINARY)
 
         # erosion to remove noise and fill in gaps
         kernel = np.ones((15, 15), np.uint8)
@@ -62,49 +61,66 @@ class BaseballDetector:
             self.w_bound = int(self.w_bound * 1.5)
             self.h_bound = int(self.h_bound * 1.5)
 
+            # Define the text and position
+            text = "ROI"
+            position = (self.x_bound, self.y_bound - 5
+                        )  # Position the text above the rectangle
+
+            # Add the text
+            cv.putText(self.plot_img, text, position, cv.FONT_HERSHEY_SIMPLEX,
+                       0.5, (0, 255, 0), 2)
             cv.rectangle(
                 self.plot_img, (self.x_bound, self.y_bound),
                 (self.x_bound + self.w_bound, self.y_bound + self.h_bound),
                 (255, 0, 0), 2)
 
             #crop everything inside of bounding box
-            crop_img = eroded[self.y_bound:self.y_bound + self.h_bound,
-                              self.x_bound:self.x_bound + self.w_bound]
+            crop_img = blur[self.y_bound:self.y_bound + self.h_bound,
+                            self.x_bound:self.x_bound + self.w_bound]
         else:
-            crop_img = eroded
+            crop_img = None
+
+        #threshold on cropped image
+        ret, crop_img = cv.threshold(crop_img, 5, 255, cv.THRESH_BINARY)
 
         self.prev_image = blur
 
-        return diff, blur, thresh, eroded, crop_img, time_diff
+        return blur, thresh, eroded, crop_img, time_diff
 
-    def _get_ball_circle(self, img):
+    def _get_hough_circle(self, img):
 
-        #find circles
-        circles = cv.HoughCircles(img,
-                                  cv.HOUGH_GRADIENT,
-                                  1,
-                                  1000,
-                                  param1=250,
-                                  param2=1,
-                                  minRadius=5,
-                                  maxRadius=25)
-        #
-        if circles is not None:
-            circles = np.round(circles[0, :]).astype("int")
-            for (circ_x, circ_y, circ_r) in circles:
-                x = self.x_bound + circ_x
-                y = self.y_bound + circ_y
-                #onyl plot circles that are within the bounding box
-                # cv.circle(self.plot_img, (x, y), circ_r, (0, 255, 0), 2)
-                cv.rectangle(self.plot_img, (x - 2, y - 2), (x + 2, y + 2),
-                             (0, 0, 255), -1)
+        if img is not None:
+            #find circles
+            circles = cv.HoughCircles(img,
+                                      cv.HOUGH_GRADIENT,
+                                      1,
+                                      1000,
+                                      param1=250,
+                                      param2=1,
+                                      minRadius=5,
+                                      maxRadius=25)
+            #
+            if circles is not None:
+                circles = np.round(circles[0, :]).astype("int")
+                for (circ_x, circ_y, circ_r) in circles:
+                    x = self.x_bound + circ_x
+                    y = self.y_bound + circ_y
+                    #onyl plot circles that are within the bounding box
+                    # cv.circle(self.plot_img, (x, y), circ_r, (0, 255, 0), 1)
+                    cv.rectangle(self.plot_img, (x - 2, y - 2), (x + 2, y + 2),
+                                 (0, 0, 255), -1)
+                return (x,y)
+            else:
+                return (0,0)
+        else:
+            return (0,0)
 
-        # keypoints = self.blob_detector.detect(img)
-        # img_with_keypoints = cv.drawKeypoints(
-        #     img, keypoints, np.array([]), (0, 0, 255),
-        #     cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-        return None
+    def _get_blob_circle(self, img):
+        raise NotImplementedError
+
+    def _remove_background(self, img):
+        return cv.absdiff(img, self.background)
 
     def detect(self, img, display=False):
         self.plot_img = img.copy()
@@ -115,18 +131,20 @@ class BaseballDetector:
             self.background = img.copy()
             self.first_detect = True
 
-        diff, blur, thresh, eroded, crop_img, time_diff = self._get_place_to_look_for_ball(
-            img)
-        circle = self._get_ball_circle(crop_img)
+        img = self._remove_background(img)
+
+        blur, thresh, eroded, crop_img, time_diff = self._get_ROI(img)
+        x_loc, y_loc = self._get_hough_circle(crop_img)
 
         if self.display:
             cv.imshow('raw', self.plot_img)
-            cv.imshow('diff', diff)
-            cv.imshow('blur', blur)
-            cv.imshow('thresh', thresh)
-            cv.imshow('dilated and eroded', eroded)
-            cv.imshow('cropped', crop_img)
-            cv.imshow('time diff', time_diff)
+            # cv.imshow('diff', diff)
+            # cv.imshow('blur', blur)
+            # cv.imshow('thresh', thresh)
+            # cv.imshow('dilated and eroded', eroded)
+            if crop_img is not None:
+                cv.imshow('cropped', crop_img)
+            # cv.imshow('time diff', time_diff)
             # cv.imshow('background', self.background)
             # cv.imshow('circle', circle)
             key = cv.waitKey(0)
@@ -134,8 +152,8 @@ class BaseballDetector:
             if key == ord('q'):
                 cv.destroyAllWindows()
                 raise SystemExit
-            elif key == ord('s'):
-                cv.imwrite('cropped.png', crop_img)
+            # elif key == ord('s'):
+            # cv.imwrite('cropped.png', crop_img)
 
         # raise NotImplementedError
 
