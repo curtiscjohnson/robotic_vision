@@ -95,6 +95,9 @@ undistorted2 = cv.undistortPoints(four_corners2,
                                   right_distortion,
                                   R=R2,
                                   P=P2)
+print(f"four_corners1:\n {four_corners1}")
+print(f"four_corners2:\n {four_corners2}")
+
 
 print(f"undistorted1:\n {undistorted1}")
 print(f"undistorted2:\n {undistorted2}")

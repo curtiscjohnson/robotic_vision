@@ -1,7 +1,12 @@
+from calendar import c
 import os
 import cv2 as cv
+from matplotlib import pyplot as plt
 import numpy as np
 import glob
+
+import yaml
+import matplotlib.pyplot as plt
 
 
 class BaseballDetector:
@@ -24,6 +29,7 @@ class BaseballDetector:
         params = cv.SimpleBlobDetector_Params()
         params.filterByCircularity = True
         params.minCircularity = 0.8
+        self.save_counter = 0
 
         self.blob_detector = cv.SimpleBlobDetector_create(params)
 
@@ -49,7 +55,6 @@ class BaseballDetector:
                                               cv.CHAIN_APPROX_SIMPLE)
         #get max area bounding box
         max_area_idx = 0
-        print(len(contours))
         if len(contours) > 0:
             for i, contour in enumerate(contours):
                 area = cv.contourArea(contour)
@@ -81,7 +86,7 @@ class BaseballDetector:
             crop_img = None
 
         #threshold on cropped image
-        ret, crop_img = cv.threshold(crop_img, 5, 255, cv.THRESH_BINARY)
+        ret, crop_img = cv.threshold(crop_img, 7, 255, cv.THRESH_BINARY)
 
         self.prev_image = blur
 
@@ -109,12 +114,9 @@ class BaseballDetector:
                     # cv.circle(self.plot_img, (x, y), circ_r, (0, 255, 0), 1)
                     cv.rectangle(self.plot_img, (x - 2, y - 2), (x + 2, y + 2),
                                  (0, 0, 255), -1)
-                return (x,y)
-            else:
-                return (0,0)
-        else:
-            return (0,0)
+                return (x, y)
 
+        return None, None
 
     def _get_blob_circle(self, img):
         raise NotImplementedError
@@ -152,112 +154,158 @@ class BaseballDetector:
             if key == ord('q'):
                 cv.destroyAllWindows()
                 raise SystemExit
-            # elif key == ord('s'):
-            # cv.imwrite('cropped.png', crop_img)
+            elif key == ord('s'):
+                cv.imwrite(f'{self.save_counter}.png', self.plot_img)
+                self.save_counter += 1
 
-        # raise NotImplementedError
+        return x_loc, y_loc
 
 
 if __name__ == '__main__':
 
-    baseball_detector = BaseballDetector(grayscale=False)
+    #load parameters from file
+    undistortRectifyMapLx = np.load('./calibration/undistortRectifyMapLx.npy')
+    undistortRectifyMapLy = np.load('./calibration/undistortRectifyMapLy.npy')
+    undistortRectifyMapRx = np.load('./calibration/undistortRectifyMapRx.npy')
+    undistortRectifyMapRy = np.load('./calibration/undistortRectifyMapRy.npy')
+    Q = np.load('./calibration/Q.npy')
+
+    with open('./calibration/stereo_calibration.yaml') as f:
+        stereodict = yaml.load(f, Loader=yaml.FullLoader)
+
+    R = np.array(stereodict['R'])
+    T = np.array(stereodict['T'])
 
     left_images = sorted(glob.glob('./20240215112959/L/*.png'),
                          key=lambda filename: int(
                              os.path.splitext(os.path.basename(filename))[0]))
 
-    for i, filepath in enumerate(left_images):
-        img = cv.imread(filepath)
-        baseball_detector.detect(img, display=True)
+    right_images = sorted(glob.glob('./20240215112959/R/*.png'),
+                          key=lambda filename: int(
+                              os.path.splitext(os.path.basename(filename))[0]))
 
-    # #read in one image at a time, find the ball, and display the image with a rectangle overlay
-    # # detector = cv.SimpleBlobDetector()
-    # prev_img = np.zeros(images[0][0].shape, dtype=np.uint8)
+    left_baseball_detector = BaseballDetector(grayscale=False, display=False)
+    right_baseball_detector = BaseballDetector(grayscale=False, display=False)
 
-    # #make video writer for mp4
-    # out = cv.VideoWriter('baseball_tracking.mp4', cv.VideoWriter_fourcc('m','p','4','v'), 10, (640, 480))
+    ball_traj = []
+    for left_file, right_file in zip(left_images, right_images):
+        left_img = cv.imread(left_file)
+        right_img = cv.imread(right_file)
 
-    # for i in range(len(images)):
-    #     first_time = True
+        left_img_gray = cv.cvtColor(left_img, cv.COLOR_BGR2GRAY)
+        right_img_gray = cv.cvtColor(right_img, cv.COLOR_BGR2GRAY)
 
-    #     for i, img in enumerate(images[i]):
-    #         plot_img = img.copy()
-    #         # find absdiff
-    #         diff = cv.absdiff(img, prev_img)
-    #         diff_gray = cv.cvtColor(diff, cv.COLOR_BGR2GRAY)
+        #undistory and rectify images
+        left_img_rect = cv.remap(left_img, undistortRectifyMapLx,
+                                 undistortRectifyMapLy, cv.INTER_LINEAR)
+        right_img_rect = cv.remap(right_img, undistortRectifyMapRx,
+                                  undistortRectifyMapRy, cv.INTER_LINEAR)
 
-    #         # gaussian blur diff image
-    #         blur = cv.GaussianBlur(diff_gray, (3, 3), 0)
+        # detect baseball in undisorted and rectified images
+        #? could do this, or detect in raw images and only undistort and rectify the ball location. not sure which is faster.
+        left_x, left_y = left_baseball_detector.detect(left_img_rect,
+                                                       display=False)
+        right_x, right_y = right_baseball_detector.detect(right_img_rect,
+                                                          display=False)
 
-    #         # erosion to remove noise
-    #         kernel = np.ones((5, 5), np.uint8)
-    #         diff_gray = cv.dilate(blur, kernel, iterations=4)
-    #         diff_gray = cv.erode(diff_gray, kernel, iterations=4)
+        print(f'Left: {left_x}, {left_y}')
+        print(f'Right: {right_x}, {right_y}')
 
-    #         #threshold blur on about gresyscale of 5ish
-    #         ret, thresh = cv.threshold(diff_gray, 10, 255, cv.THRESH_BINARY)
+        if left_x is not None and right_x is not None:
+            """ 
+            ! To get disparity map, I am individually detecting the ball in 
+            ! each image, then using diff in x to get disparity. 
+            ! They are not always on the same horizonal line however.
+            """
 
-    #         #find contour with largest bounding box
-    #         contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-    #         #get max area bounding box
-    #         max_area_idx = 0
-    #         for i, contour in enumerate(contours):
-    #             x, y, w, h = cv.boundingRect(contour)
-    #             area = cv.contourArea(contour)
-    #             if area > cv.contourArea(contours[max_area_idx]):
-    #                 max_area_idx = i
-    #         #draw bounding box
-    #         x, y, w, h = cv.boundingRect(contours[max_area_idx])
-    #         if not first_time:
-    #             pass
-    #             # cv.rectangle(plot_img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            #calculate estimated disparity for the baseball center
+            disparity = left_x - right_x
 
-    #         #zero out everything outside of bounding box
-    #         mask = np.zeros(thresh.shape, np.uint8)
-    #         mask[y:y + h, x:x + w] = 255
-    #         thresh = cv.bitwise_and(img, img, mask=mask)
+            baseball_center = np.array([left_x, left_y,
+                                        disparity]).reshape(1, 1, 3)
 
-    #         blur2 = cv.cvtColor(thresh, cv.COLOR_BGR2GRAY)
+            #use Q to get 3D point
+            points3d = cv.perspectiveTransform(
+                baseball_center.astype(np.float32), Q)
 
-    #         # #round of dilation and kernel, iterations=1)
-    #         #blur image a bit per docs suggestion
-    #         # blur2 = cv.GaussianBlur(thresh, (15, 15), 0)
+            print(f'3D point: {points3d}')
 
-    #         if not first_time:
-    #             #find circles
-    #             circles = cv.HoughCircles(blur2,
-    #                                     cv.HOUGH_GRADIENT,
-    #                                     5,
-    #                                     100,
-    #                                     param1=50,
-    #                                     param2=10,
-    #                                     minRadius=5,
-    #                                     maxRadius=25)
+            ball_traj.append(points3d.squeeze())
 
-    #             if circles is not None:
-    #                 circles = np.round(circles[0, :]).astype("int")
-    #                 for (circ_x, circ_y, circ_r) in circles:
-    #                     #onyl plot circles that are within the bounding box
+    ball_traj = np.array(ball_traj)
 
-    #                     if circ_x < (x + w) and circ_x > x and circ_y < (y + h) and circ_y > y:
-    #                         # pass
-    #                         cv.circle(plot_img, (circ_x, circ_y), circ_r, (0, 255, 0), 2)
-    #                         cv.rectangle(plot_img, (circ_x - 5, circ_y - 5), (circ_x + 5, circ_y + 5), (0, 128, 255), -1)
+    #shift data to midpoint between cameras. Since this is ambiguous,
+    # I define midpoint frame to mean midpoint of translation vector between cameras,
+    # but still parallel with the left camera frame.
+    t_OrelToR_inR = T / 2
+    t_LrelTo0_inR = t_OrelToR_inR
 
-    #         # keypoints = detector.detect(img)
-    #         # img_with_keypoints = cv.drawKeypoints(img, keypoints, np.array([]), (0,0,255), cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    #         cv.imshow('diff Image', diff_gray)
-    #         # cv.imshow('first thresh', first_thresh)
-    #         cv.imshow('Current Image', plot_img)
-    #         cv.imshow('thresh', thresh)
-    #         cv.imshow('blur', blur2)
-    #         first_time = False
-    #         #kill program on 'q' key press or proceed
+    t_LrelToO_inL = R.T @ t_LrelTo0_inR
 
-    #         #make video of images
-    #         out.write(plot_img)
+    print(f"t_LrelToO_inL: \n{t_LrelToO_inL}")
 
-    #         key = cv.waitKey(0)
-    #         prev_img = img
-    #         if key == ord('q'):
-    #             break
+    t_Rrelto0_inL = -R.T @ t_OrelToR_inR
+    print(f"t_Rrelto0_inL: \n{t_Rrelto0_inL}")
+
+    ball_traj = ball_traj + t_LrelToO_inL.reshape(1, 3)
+
+    time = np.arange(0, ball_traj.shape[0], 1)
+
+    fig, axs = plt.subplots(2, 1)
+    axs[0].set_title('Side View')
+    scatter = axs[0].scatter(ball_traj[:, 2],
+                             ball_traj[:, 1],
+                             c=time,
+                             cmap='viridis')
+    axs[0].scatter(t_LrelToO_inL[2],
+                   t_LrelToO_inL[1],
+                   c='r',
+                   label='Left Camera',
+                   marker='s')
+    axs[0].scatter(t_Rrelto0_inL[2],
+                   t_Rrelto0_inL[1],
+                   c='b',
+                   label='Right Camera',
+                   marker='s')
+
+    axs[0].scatter(0, 0, c='g', label='Midpoint', marker='x')
+
+    axs[0].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
+    axs[0].set_ylim(100, -100)
+    axs[0].set_xlabel('Z')
+    axs[0].set_ylabel('Y')
+    axs[0].axis('equal')
+    axs[0].grid()
+    axs[0].legend()
+    cbar0 = plt.colorbar(scatter)
+    cbar0.set_label('Frame')
+
+    axs[1].set_title('Top View')
+    scatter = axs[1].scatter(ball_traj[:, 2],
+                             ball_traj[:, 0],
+                             c=time,
+                             cmap='viridis')
+    axs[1].scatter(t_LrelToO_inL[2],
+                   t_LrelToO_inL[0],
+                   c='r',
+                   label='Left Camera',
+                   marker='s')
+    axs[1].scatter(t_Rrelto0_inL[2],
+                   t_Rrelto0_inL[0],
+                   c='b',
+                   label='Right Camera',
+                   marker='s')
+    axs[1].scatter(0, 0, c='g', label='Midpoint', marker='x')
+    axs[1].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
+    axs[1].set_ylim(min(ball_traj[:, 0]), max(ball_traj[:, 0]))
+    axs[1].set_xlabel('Z')
+    axs[1].set_ylabel('X')
+    axs[1].axis('equal')
+    axs[1].grid()
+    axs[1].legend()
+    cbar1 = plt.colorbar(scatter)
+    cbar1.set_label('Frame')
+
+    print(f"R (rotation right to left): \n{R}")
+    print(f"T (position of left relative to right, expressed in right): \n{T}")
+    plt.show()
