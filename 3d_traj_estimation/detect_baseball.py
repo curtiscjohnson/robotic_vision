@@ -184,8 +184,8 @@ if __name__ == '__main__':
                           key=lambda filename: int(
                               os.path.splitext(os.path.basename(filename))[0]))
 
-    left_baseball_detector = BaseballDetector(grayscale=False, display=False)
-    right_baseball_detector = BaseballDetector(grayscale=False, display=False)
+    left_baseball_detector = BaseballDetector(grayscale=True, display=False)
+    right_baseball_detector = BaseballDetector(grayscale=True, display=False)
 
     ball_traj = []
     for left_file, right_file in zip(left_images, right_images):
@@ -196,9 +196,9 @@ if __name__ == '__main__':
         right_img_gray = cv.cvtColor(right_img, cv.COLOR_BGR2GRAY)
 
         #undistory and rectify images
-        left_img_rect = cv.remap(left_img, undistortRectifyMapLx,
+        left_img_rect = cv.remap(left_img_gray, undistortRectifyMapLx,
                                  undistortRectifyMapLy, cv.INTER_LINEAR)
-        right_img_rect = cv.remap(right_img, undistortRectifyMapRx,
+        right_img_rect = cv.remap(right_img_gray, undistortRectifyMapRx,
                                   undistortRectifyMapRy, cv.INTER_LINEAR)
 
         # detect baseball in undisorted and rectified images
@@ -249,6 +249,17 @@ if __name__ == '__main__':
 
     ball_traj = ball_traj + t_LrelToO_inL.reshape(1, 3)
 
+    #fit line to top view trajectory to get x coordinate @ z=0
+    # fit parabola to side view to get y coordinate @ z=0
+    best_fit_line = np.polyfit(ball_traj[:, 2], ball_traj[:, 0], 1)
+    best_fit_parabola = np.polyfit(ball_traj[:, 2], ball_traj[:, 1], 2)
+
+    #plot lines on top view and parabola on side view
+    z = np.linspace(max(ball_traj[:, 2]), 0, 100)
+    x = best_fit_line[0] * z + best_fit_line[1]
+    y = best_fit_parabola[0] * z**2 + best_fit_parabola[
+        1] * z + best_fit_parabola[2]
+
     time = np.arange(0, ball_traj.shape[0], 1)
 
     fig, axs = plt.subplots(2, 1)
@@ -269,6 +280,7 @@ if __name__ == '__main__':
                    marker='s')
 
     axs[0].scatter(0, 0, c='g', label='Midpoint', marker='x')
+    axs[0].plot(z, y, 'r--', label='Best Fit Parabola')
 
     axs[0].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
     axs[0].set_ylim(100, -100)
@@ -295,6 +307,7 @@ if __name__ == '__main__':
                    c='b',
                    label='Right Camera',
                    marker='s')
+    axs[1].plot(z, x, 'r--', label='Best Fit Line')
     axs[1].scatter(0, 0, c='g', label='Midpoint', marker='x')
     axs[1].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
     axs[1].set_ylim(min(ball_traj[:, 0]), max(ball_traj[:, 0]))
