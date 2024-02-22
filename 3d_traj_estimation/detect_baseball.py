@@ -321,4 +321,6 @@ if __name__ == '__main__':
 
     print(f"R (rotation right to left): \n{R}")
     print(f"T (position of left relative to right, expressed in right): \n{T}")
+    print(f"Estimated x intercept: {best_fit_line[1]}")
+    print(f"Estimated y intercept: {best_fit_parabola[2]}")
     plt.show()
