@@ -17,23 +17,29 @@ def match_features(cropped_des, full_des):
     matches = sorted(matches, key=lambda x: x[0].distance)
 
     ## (6) Ratio test, to get good matches.
-    good = [m1 for (m1, m2) in matches if m1.distance < 0.7 * m2.distance]
+    good = [m1 for (m1, m2) in matches if m1.distance < 0.75 * m2.distance]
 
     #return best 20 matches
-    # good_matches = sorted(good_matches, key=lambda x: x[0].distance)
+    good = sorted(good, key=lambda x: x.distance)
 
     return good
+
+
+def low_pass_filter(homography, prev_homography, alpha):
+    return alpha * prev_homography + (1 - alpha) * homography
 
 
 FLANN_INDEX_KDTREE = 1
 index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
 search_params = dict(checks=50)  # or pass empty dictionary
 flann = cv.FlannBasedMatcher(index_params, search_params)
-orb = cv.SIFT_create(nfeatures=0,
-                     nOctaveLayers=3,
-                     contrastThreshold=0.0001,
-                     edgeThreshold=100,
-                     sigma=1.6)
+orb = cv.SIFT_create(
+    nfeatures=0,
+    #  nOctaveLayers=30,
+    contrastThreshold=0.00001,
+    edgeThreshold=1000,
+    sigma=1.6)
+# orb = cv.ORB_create()
 
 target = cv.imread("./new.jpeg")
 reference = cv.imread("./old_cropped.jpg")
@@ -44,7 +50,6 @@ reference = cv.resize(reference,
 target = cv.resize(target, (reference.shape[1], reference.shape[0]), target, 0,
                    0, cv.INTER_AREA)
 
-
 ref_kp, ref_des = extract_features(reference)
 
 # Create a VideoCapture object
@@ -54,6 +59,8 @@ cap = cv.VideoCapture('video.mp4')
 if not cap.isOpened():
     print("Error opening video file")
 
+prev_M = np.eye(3)
+
 # Read until video is completed
 while (cap.isOpened()):
     # Capture frame-by-frame
@@ -61,7 +68,7 @@ while (cap.isOpened()):
 
     if ret == True:
         # frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        frame = cv.resize(frame, (frame.shape[1] // 3, frame.shape[0] // 3),
+        frame = cv.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2),
                           frame, 0, 0, cv.INTER_AREA)
 
         start = time.time()
@@ -101,9 +108,12 @@ while (cap.isOpened()):
         M, mask = cv.findHomography(src_pts,
                                     dst_pts,
                                     cv.RANSAC,
-                                    9.0,
+                                    1.0,
                                     maxIters=1000,
                                     confidence=0.999)
+
+        # M = low_pass_filter(M, prev_M, 0.4)
+        prev_M = M
 
         #map target image to video image
         h, w, _ = reference.shape

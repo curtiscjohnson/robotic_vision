@@ -1,4 +1,4 @@
-from calendar import c
+import imp
 import os
 import cv2 as cv
 from matplotlib import pyplot as plt
@@ -7,6 +7,9 @@ import glob
 
 import yaml
 import matplotlib.pyplot as plt
+import time
+from line_profiler import LineProfiler
+import cProfile
 
 
 class BaseballDetector:
@@ -66,18 +69,19 @@ class BaseballDetector:
             self.w_bound = int(self.w_bound * 1.5)
             self.h_bound = int(self.h_bound * 1.5)
 
-            # Define the text and position
-            text = "ROI"
-            position = (self.x_bound, self.y_bound - 5
-                        )  # Position the text above the rectangle
+            if self.display:
+                # Define the text and position
+                text = "ROI"
+                position = (self.x_bound, self.y_bound - 5
+                            )  # Position the text above the rectangle
 
-            # Add the text
-            cv.putText(self.plot_img, text, position, cv.FONT_HERSHEY_SIMPLEX,
-                       0.5, (0, 255, 0), 2)
-            cv.rectangle(
-                self.plot_img, (self.x_bound, self.y_bound),
-                (self.x_bound + self.w_bound, self.y_bound + self.h_bound),
-                (255, 0, 0), 2)
+                # Add the text
+                cv.putText(self.plot_img, text, position,
+                           cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv.rectangle(
+                    self.plot_img, (self.x_bound, self.y_bound),
+                    (self.x_bound + self.w_bound, self.y_bound + self.h_bound),
+                    (255, 0, 0), 2)
 
             #crop everything inside of bounding box
             crop_img = blur[self.y_bound:self.y_bound + self.h_bound,
@@ -112,8 +116,9 @@ class BaseballDetector:
                     y = self.y_bound + circ_y
                     #onyl plot circles that are within the bounding box
                     # cv.circle(self.plot_img, (x, y), circ_r, (0, 255, 0), 1)
-                    cv.rectangle(self.plot_img, (x - 2, y - 2), (x + 2, y + 2),
-                                 (0, 0, 255), -1)
+                    if self.display:
+                        cv.rectangle(self.plot_img, (x - 2, y - 2),
+                                     (x + 2, y + 2), (0, 0, 255), -1)
                 return (x, y)
 
         return None, None
@@ -124,8 +129,8 @@ class BaseballDetector:
     def _remove_background(self, img):
         return cv.absdiff(img, self.background)
 
-    def detect(self, img, display=False):
-        self.plot_img = img.copy()
+    def detect(self, img):
+        # self.plot_img = img.copy()
         if not self.incoming_in_gray:
             img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
@@ -136,6 +141,7 @@ class BaseballDetector:
         img = self._remove_background(img)
 
         blur, thresh, eroded, crop_img, time_diff = self._get_ROI(img)
+
         x_loc, y_loc = self._get_hough_circle(crop_img)
 
         if self.display:
@@ -161,7 +167,7 @@ class BaseballDetector:
         return x_loc, y_loc
 
 
-if __name__ == '__main__':
+def main():
 
     #load parameters from file
     undistortRectifyMapLx = np.load('./calibration/undistortRectifyMapLx.npy')
@@ -184,33 +190,36 @@ if __name__ == '__main__':
                           key=lambda filename: int(
                               os.path.splitext(os.path.basename(filename))[0]))
 
-    left_baseball_detector = BaseballDetector(grayscale=True, display=False)
-    right_baseball_detector = BaseballDetector(grayscale=True, display=False)
+    left_baseball_detector = BaseballDetector(grayscale=False, display=False)
+    right_baseball_detector = BaseballDetector(grayscale=False, display=False)
 
     ball_traj = []
     for left_file, right_file in zip(left_images, right_images):
+        start = time.time()
         left_img = cv.imread(left_file)
         right_img = cv.imread(right_file)
+        print(f'Time to read images: {time.time() - start}')
 
-        left_img_gray = cv.cvtColor(left_img, cv.COLOR_BGR2GRAY)
-        right_img_gray = cv.cvtColor(right_img, cv.COLOR_BGR2GRAY)
+        # left_img_gray = cv.cvtColor(left_img, cv.COLOR_BGR2GRAY)
+        # right_img_gray = cv.cvtColor(right_img, cv.COLOR_BGR2GRAY)
 
         #undistory and rectify images
-        left_img_rect = cv.remap(left_img_gray, undistortRectifyMapLx,
+        start = time.time()
+        left_img_rect = cv.remap(left_img, undistortRectifyMapLx,
                                  undistortRectifyMapLy, cv.INTER_LINEAR)
-        right_img_rect = cv.remap(right_img_gray, undistortRectifyMapRx,
+        right_img_rect = cv.remap(right_img, undistortRectifyMapRx,
                                   undistortRectifyMapRy, cv.INTER_LINEAR)
+        print(f'Time to undistort and rectify images: {time.time() - start}')
 
         # detect baseball in undisorted and rectified images
-        #? could do this, or detect in raw images and only undistort and rectify the ball location. not sure which is faster.
-        left_x, left_y = left_baseball_detector.detect(left_img_rect,
-                                                       display=False)
-        right_x, right_y = right_baseball_detector.detect(right_img_rect,
-                                                          display=False)
+        start = time.time()
+        left_x, left_y = left_baseball_detector.detect(left_img_rect)
+        right_x, right_y = right_baseball_detector.detect(right_img_rect)
+        print(f'Time to detect baseball: {time.time() - start}')
 
-        print(f'Left: {left_x}, {left_y}')
-        print(f'Right: {right_x}, {right_y}')
-
+        # print(f'Left: {left_x}, {left_y}')
+        # print(f'Right: {right_x}, {right_y}')
+        start = time.time()
         if left_x is not None and right_x is not None:
             """ 
             ! To get disparity map, I am individually detecting the ball in 
@@ -228,9 +237,11 @@ if __name__ == '__main__':
             points3d = cv.perspectiveTransform(
                 baseball_center.astype(np.float32), Q)
 
-            print(f'3D point: {points3d}')
+            # print(f'3D point: {points3d}')
 
             ball_traj.append(points3d.squeeze())
+
+        print(f'Time to calculate 3D point: {time.time() - start}\n\n')
 
     ball_traj = np.array(ball_traj)
 
@@ -254,73 +265,77 @@ if __name__ == '__main__':
     best_fit_line = np.polyfit(ball_traj[:, 2], ball_traj[:, 0], 1)
     best_fit_parabola = np.polyfit(ball_traj[:, 2], ball_traj[:, 1], 2)
 
-    #plot lines on top view and parabola on side view
-    z = np.linspace(max(ball_traj[:, 2]), 0, 100)
-    x = best_fit_line[0] * z + best_fit_line[1]
-    y = best_fit_parabola[0] * z**2 + best_fit_parabola[
-        1] * z + best_fit_parabola[2]
+    # #plot lines on top view and parabola on side view
+    # z = np.linspace(max(ball_traj[:, 2]), 0, 100)
+    # x = best_fit_line[0] * z + best_fit_line[1]
+    # y = best_fit_parabola[0] * z**2 + best_fit_parabola[
+    #     1] * z + best_fit_parabola[2]
 
-    time = np.arange(0, ball_traj.shape[0], 1)
+    # time = np.arange(0, ball_traj.shape[0], 1)
 
-    fig, axs = plt.subplots(2, 1)
-    axs[0].set_title('Side View')
-    scatter = axs[0].scatter(ball_traj[:, 2],
-                             ball_traj[:, 1],
-                             c=time,
-                             cmap='viridis')
-    axs[0].scatter(t_LrelToO_inL[2],
-                   t_LrelToO_inL[1],
-                   c='r',
-                   label='Left Camera',
-                   marker='s')
-    axs[0].scatter(t_Rrelto0_inL[2],
-                   t_Rrelto0_inL[1],
-                   c='b',
-                   label='Right Camera',
-                   marker='s')
+    # fig, axs = plt.subplots(2, 1)
+    # axs[0].set_title('Side View')
+    # scatter = axs[0].scatter(ball_traj[:, 2],
+    #                          ball_traj[:, 1],
+    #                          c=time,
+    #                          cmap='viridis')
+    # axs[0].scatter(t_LrelToO_inL[2],
+    #                t_LrelToO_inL[1],
+    #                c='r',
+    #                label='Left Camera',
+    #                marker='s')
+    # axs[0].scatter(t_Rrelto0_inL[2],
+    #                t_Rrelto0_inL[1],
+    #                c='b',
+    #                label='Right Camera',
+    #                marker='s')
 
-    axs[0].scatter(0, 0, c='g', label='Midpoint', marker='x')
-    axs[0].plot(z, y, 'r--', label='Best Fit Parabola')
+    # axs[0].scatter(0, 0, c='g', label='Midpoint', marker='x')
+    # axs[0].plot(z, y, 'r--', label='Best Fit Parabola')
 
-    axs[0].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
-    axs[0].set_ylim(100, -100)
-    axs[0].set_xlabel('Z')
-    axs[0].set_ylabel('Y')
-    axs[0].axis('equal')
-    axs[0].grid()
-    axs[0].legend()
-    cbar0 = plt.colorbar(scatter)
-    cbar0.set_label('Frame')
+    # axs[0].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
+    # axs[0].set_ylim(100, -100)
+    # axs[0].set_xlabel('Z')
+    # axs[0].set_ylabel('Y')
+    # axs[0].axis('equal')
+    # axs[0].grid()
+    # axs[0].legend()
+    # cbar0 = plt.colorbar(scatter)
+    # cbar0.set_label('Frame')
 
-    axs[1].set_title('Top View')
-    scatter = axs[1].scatter(ball_traj[:, 2],
-                             ball_traj[:, 0],
-                             c=time,
-                             cmap='viridis')
-    axs[1].scatter(t_LrelToO_inL[2],
-                   t_LrelToO_inL[0],
-                   c='r',
-                   label='Left Camera',
-                   marker='s')
-    axs[1].scatter(t_Rrelto0_inL[2],
-                   t_Rrelto0_inL[0],
-                   c='b',
-                   label='Right Camera',
-                   marker='s')
-    axs[1].plot(z, x, 'r--', label='Best Fit Line')
-    axs[1].scatter(0, 0, c='g', label='Midpoint', marker='x')
-    axs[1].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
-    axs[1].set_ylim(min(ball_traj[:, 0]), max(ball_traj[:, 0]))
-    axs[1].set_xlabel('Z')
-    axs[1].set_ylabel('X')
-    axs[1].axis('equal')
-    axs[1].grid()
-    axs[1].legend()
-    cbar1 = plt.colorbar(scatter)
-    cbar1.set_label('Frame')
+    # axs[1].set_title('Top View')
+    # scatter = axs[1].scatter(ball_traj[:, 2],
+    #                          ball_traj[:, 0],
+    #                          c=time,
+    #                          cmap='viridis')
+    # axs[1].scatter(t_LrelToO_inL[2],
+    #                t_LrelToO_inL[0],
+    #                c='r',
+    #                label='Left Camera',
+    #                marker='s')
+    # axs[1].scatter(t_Rrelto0_inL[2],
+    #                t_Rrelto0_inL[0],
+    #                c='b',
+    #                label='Right Camera',
+    #                marker='s')
+    # axs[1].plot(z, x, 'r--', label='Best Fit Line')
+    # axs[1].scatter(0, 0, c='g', label='Midpoint', marker='x')
+    # axs[1].set_xlim(max(ball_traj[:, 2]), min(ball_traj[:, 2]))
+    # axs[1].set_ylim(min(ball_traj[:, 0]), max(ball_traj[:, 0]))
+    # axs[1].set_xlabel('Z')
+    # axs[1].set_ylabel('X')
+    # axs[1].axis('equal')
+    # axs[1].grid()
+    # axs[1].legend()
+    # cbar1 = plt.colorbar(scatter)
+    # cbar1.set_label('Frame')
 
-    print(f"R (rotation right to left): \n{R}")
-    print(f"T (position of left relative to right, expressed in right): \n{T}")
-    print(f"Estimated x intercept: {best_fit_line[1]}")
-    print(f"Estimated y intercept: {best_fit_parabola[2]}")
-    plt.show()
+    # print(f"R (rotation right to left): \n{R}")
+    # print(f"T (position of left relative to right, expressed in right): \n{T}")
+    # print(f"Estimated x intercept: {best_fit_line[1]}")
+    # print(f"Estimated y intercept: {best_fit_parabola[2]}")
+    # plt.show()
+
+
+if __name__ == "__main__":
+    cProfile.run('main()', 'detect_baseball.prof')
