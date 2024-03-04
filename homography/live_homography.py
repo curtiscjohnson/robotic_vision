@@ -1,6 +1,7 @@
 import cv2 as cv
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 
 
 def extract_features(image):
@@ -14,37 +15,32 @@ def match_features(cropped_des, full_des):
     matches = flann.knnMatch(cropped_des, full_des, k=2)
 
     # Sort by their distance.
-    matches = sorted(matches, key=lambda x: x[0].distance)
 
     ## (6) Ratio test, to get good matches.
     good = [m1 for (m1, m2) in matches if m1.distance < 0.75 * m2.distance]
 
     #return best 20 matches
-    good = sorted(good, key=lambda x: x.distance)
+    # good = sorted(good, key=lambda x: x.distance)
 
     return good
 
 
-def low_pass_filter(homography, prev_homography, alpha):
-    return alpha * prev_homography + (1 - alpha) * homography
-
-
 FLANN_INDEX_KDTREE = 1
-index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-search_params = dict(checks=50)  # or pass empty dictionary
+index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=10)
+search_params = dict(checks=100)  # or pass empty dictionary
 flann = cv.FlannBasedMatcher(index_params, search_params)
-orb = cv.SIFT_create(
-    nfeatures=0,
-    #  nOctaveLayers=30,
-    contrastThreshold=0.00001,
-    edgeThreshold=1000,
-    sigma=1.6)
+orb = cv.SIFT_create()
 # orb = cv.ORB_create()
 
-target = cv.imread("./new.jpeg")
-reference = cv.imread("./old_cropped.jpg")
+# target = cv.imread("./new.jpeg")
+target = cv.imread('./monalisa.png')
+# reference = cv.imread("./old_cropped.jpg")
+# reference = cv.imread("./robotics_book_cropped.png")
+# reference = cv.imread("./lab_sign.jpg")
+reference = cv.imread("./poster.jpg")
+# reference = cv.GaussianBlur(reference, (7, 7), 3)
 reference = cv.resize(reference,
-                      (reference.shape[1] // 1, reference.shape[0] // 1),
+                      (reference.shape[1] // 3, reference.shape[0] // 3),
                       reference, 0, 0, cv.INTER_AREA)
 
 target = cv.resize(target, (reference.shape[1], reference.shape[0]), target, 0,
@@ -53,13 +49,22 @@ target = cv.resize(target, (reference.shape[1], reference.shape[0]), target, 0,
 ref_kp, ref_des = extract_features(reference)
 
 # Create a VideoCapture object
-cap = cv.VideoCapture('video.mp4')
+# cap = cv.VideoCapture('video.mp4')
+# cap = cv.VideoCapture('./robot_video.mp4')
+# cap = cv.VideoCapture('./lab_sign_video.mp4')
+cap = cv.VideoCapture('./poster_video.mp4')
 
 # Check if video opened successfully
 if not cap.isOpened():
     print("Error opening video file")
 
 prev_M = np.eye(3)
+hist = []
+firstTime = True
+
+# Below VideoWriter object will create
+# a frame of above defined The output
+# is stored in 'filename.avi' file.
 
 # Read until video is completed
 while (cap.isOpened()):
@@ -68,8 +73,13 @@ while (cap.isOpened()):
 
     if ret == True:
         # frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        frame = cv.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2),
+        frame = cv.resize(frame, (frame.shape[1] // 3, frame.shape[0] // 3),
                           frame, 0, 0, cv.INTER_AREA)
+        if firstTime:
+            result = cv.VideoWriter('filename.avi',
+                                    cv.VideoWriter_fourcc(*'MJPG'), 30,
+                                    frame.shape[1::-1])
+        # frame = cv.GaussianBlur(frame, (5, 5), 0)
 
         start = time.time()
         video_kp, video_des = extract_features(frame)
@@ -89,6 +99,8 @@ while (cap.isOpened()):
                               None,
                               flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
+        # cv.imshow('Matches', img3)
+
         print("Time to draw matches: ", time.time() - start)
 
         # Find homography
@@ -105,15 +117,18 @@ while (cap.isOpened()):
             raise Exception("Not enough points to find homography")
 
         print("Using ", len(src_pts), " points to find homography.")
-        M, mask = cv.findHomography(src_pts,
-                                    dst_pts,
-                                    cv.RANSAC,
-                                    1.0,
-                                    maxIters=1000,
-                                    confidence=0.999)
+        M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
 
-        # M = low_pass_filter(M, prev_M, 0.4)
-        prev_M = M
+        # make sure homography is not too different from previous homography
+        hist.append(np.linalg.norm(M - prev_M))
+        if np.linalg.norm(M - prev_M) > 50 and not firstTime:
+            #changed too much
+            print(
+                "\n\n\nHomography changed too much, using previous homography."
+            )
+            M = prev_M
+        else:
+            prev_M = M
 
         #map target image to video image
         h, w, _ = reference.shape
@@ -139,6 +154,10 @@ while (cap.isOpened()):
         # Display the resulting frame
         cv.imshow('Frame', img3)
 
+        firstTime = False
+
+        result.write(img3)
+
         # Press Q on keyboard to exit
         if cv.waitKey(25) & 0xFF == ord('q'):
             break
@@ -147,6 +166,8 @@ while (cap.isOpened()):
     else:
         break
 
+plt.plot(hist)
+plt.show()
 # When everything done, release the video capture object
 cap.release()
 
