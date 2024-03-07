@@ -1,3 +1,4 @@
+import os
 import cv2 as cv
 import numpy as np
 import glob
@@ -244,7 +245,14 @@ def main():
         print(letters)
 
         print(blue_file.split(".jpg"))
-        np.savetxt(f'{blue_file.split(".jpg")[0]} answers.txt', letters, fmt='%s')
+        filename = os.path.basename(blue_file).split(".jpg")[0]
+        color = filename.split(" ")[0]
+        number = filename.split(" ")[1]
+
+        if not os.path.exists('./answers'):
+            os.makedirs('./answers')
+            
+        np.savetxt(f'./answers/{color} Output {number}.txt', letters, fmt='%s')
 
         # key = cv.waitKey(0)
         # if key == ord('q'):

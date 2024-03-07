@@ -1,3 +1,4 @@
+import os
 import cv2 as cv
 import numpy as np
 import glob
@@ -281,14 +282,19 @@ def main():
 
         letters = grid1_letters + grid2_letters + grid3_letters + grid4_letters
 
-        print(f"Saving {red_file}")
-        np.savetxt(f'{red_file.split(".jpg")[0]} answers.txt',
-                   letters,
-                   fmt='%s')
+        print(red_file.split(".jpg"))
+        filename = os.path.basename(red_file).split(".jpg")[0]
+        color = filename.split(" ")[0]
+        number = filename.split(" ")[1]
 
-        key = cv.waitKey(0)
-        if key == ord('q'):
-            break
+        if not os.path.exists('./answers'):
+            os.makedirs('./answers')
+
+        np.savetxt(f'./answers/{color} Output {number}.txt', letters, fmt='%s')
+
+        # key = cv.waitKey(0)
+        # if key == ord('q'):
+        #     break
 
 
 if __name__ == '__main__':
