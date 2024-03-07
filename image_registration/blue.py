@@ -251,8 +251,10 @@ def main():
 
         if not os.path.exists('./answers'):
             os.makedirs('./answers')
-            
+
         np.savetxt(f'./answers/{color} Output {number}.txt', letters, fmt='%s')
+
+        cv.imwrite(f'./output_images/{color} Output {number}.jpg', diff)
 
         # key = cv.waitKey(0)
         # if key == ord('q'):
